@@ -6,8 +6,6 @@ using System.ServiceProcess;
 public class ProjectInstaller : Installer
 {
     private ServiceInstaller serviceInstaller;
-    private ServiceProcessInstaller serviceProcessInstaller1;
-    private ServiceInstaller serviceInstaller1;
     private ServiceProcessInstaller processInstaller;
 
     public ProjectInstaller()
@@ -17,7 +15,9 @@ public class ProjectInstaller : Installer
         processInstaller = new ServiceProcessInstaller();
 
         // Configure service installer
-        serviceInstaller.ServiceName = "Gen_System_Service"; // Set your service name here
+        serviceInstaller.ServiceName = "GEN_MaintenanceWinService"; // Set your service name here
+        serviceInstaller.DisplayName = "GEN_MaintenanceWinService"; // Set your service display name here
+        serviceInstaller.Description = "GEN_MaintenanceWinService: Monitors system performance, manages backups, and sends notifications for critical events."; // Set your service description here
         serviceInstaller.StartType = ServiceStartMode.Automatic;
 
         // Configure process installer
@@ -26,31 +26,15 @@ public class ProjectInstaller : Installer
         // Add installers to collection
         Installers.Add(processInstaller);
         Installers.Add(serviceInstaller);
+
+        // Start Service Automatically After Install
+        // this.Committed += new InstallEventHandler(ProjectInstaller_Committed);
     }
 
-    private void InitializeComponent()
-    {
-            this.serviceProcessInstaller1 = new System.ServiceProcess.ServiceProcessInstaller();
-            this.serviceInstaller1 = new System.ServiceProcess.ServiceInstaller();
-            // 
-            // serviceProcessInstaller1
-            // 
-            this.serviceProcessInstaller1.Account = System.ServiceProcess.ServiceAccount.LocalService;
-            this.serviceProcessInstaller1.Password = null;
-            this.serviceProcessInstaller1.Username = null;
-            // 
-            // serviceInstaller1
-            // 
-            this.serviceInstaller1.Description = "Gen_System_Service";
-            this.serviceInstaller1.DisplayName = "Gen_System_Service";
-            this.serviceInstaller1.ServiceName = "Gen_System_Service";
-            this.serviceInstaller1.StartType = System.ServiceProcess.ServiceStartMode.Automatic;
-            // 
-            // ProjectInstaller
-            // 
-            this.Installers.AddRange(new System.Configuration.Install.Installer[] {
-            this.serviceProcessInstaller1,
-            this.serviceInstaller1});
-
-    }
+    // private void ProjectInstaller_Committed(object sender, InstallEventArgs e)
+    // {
+    //     // Start the service after installation
+    //     ServiceController sc = new ServiceController("GEN_MaintenanceWinService"); // Replace "GEN_MaintenanceWinService" with your service name
+    //     sc.Start();
+    // }
 }

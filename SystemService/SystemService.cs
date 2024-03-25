@@ -24,6 +24,7 @@ namespace SystemService
         private Timer timer;
         private string isED;
         private string connectionString;
+        private string SystemName;
         private string CPUPercent;
         private string MemoryPercent;
         private string RestartHour;
@@ -37,6 +38,13 @@ namespace SystemService
         private string folderToZip;
         private string OutputZIP;
         private bool EnableZIPUpload;
+        private bool EnableScheduleRestart;
+        private bool isDBCallPending = true; 
+        private DateTime lastDBCallTime = DateTime.MinValue;
+        private DateTime RestartDateTimeDB;
+        private string isActive;
+        private string SPCallSeconds;
+
 
 
 
@@ -94,13 +102,13 @@ namespace SystemService
             }
         }
 
-        protected async override void OnStart(string[] args)
+        protected override void OnStart(string[] args)
         {
             notificationSent = false;
             string IpAddress = GetIpAddress();
             string ServerName = Environment.MachineName;
             timer = new Timer();
-            timer.Interval = 50000; 
+            timer.Interval = 54000; 
             timer.Elapsed += Timer_Elapsed;
             timer.AutoReset = true;
             timer.Start();
@@ -124,7 +132,45 @@ namespace SystemService
                 string IpAddress = GetIpAddress();
                 string ServerName = Environment.MachineName;
 
+                EnableScheduleRestart = Convert.ToBoolean(ConfigurationManager.AppSettings["EnableScheduleRestart"]);
+                SystemName = ConfigurationManager.AppSettings["SystemName"];
+                SPCallSeconds = ConfigurationManager.AppSettings["SPCallSeconds"];
+                int SPCallSecondsInt = Int32.Parse(SPCallSeconds);
 
+                if (isDBCallPending && (DateTime.Now - lastDBCallTime).TotalSeconds >= SPCallSecondsInt)
+                {
+                    (RestartDateTimeDB, isActive) = GetRestartDateTimeAndIsActiveFromDB(SystemName);
+                    isDBCallPending = false; 
+                    lastDBCallTime = DateTime.Now; 
+                }
+
+                if (EnableScheduleRestart)
+                {
+                    if (DateTime.Now.Date == RestartDateTimeDB.Date && DateTime.Now.Hour == RestartDateTimeDB.Hour && DateTime.Now.Minute == RestartDateTimeDB.Minute)
+                    {
+                        if (isActive == "1")
+                        {
+
+                            DateTime SystemRestartDateTime = DateTime.Now;
+                            string formattedRestartDateTime = SystemRestartDateTime.ToString("dd-MM-yyyy HH:mm");
+                            string Description = "Restart (Schedule Time Matched)";
+                            string LastBootTime = GetLastBootTime();
+                            string messageRestart = $"Schedule Restart - {ServerName}, IP: {IpAddress}, CPU: {cpuUsage}%, Mem: {memoryUsage}%, Last: {LastBootTime}, Restart: {formattedRestartDateTime}";
+                            await CallApi(messageRestart, MobileNumbers);
+                            LogEvent(ServerName, IpAddress, cpuUsage.ToString(), memoryUsage.ToString(), Description, "0", LastBootTime);
+                            NotepadLog($"{Description} {DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss")}");
+                            notificationSent = false;
+                            System.Diagnostics.Process.Start("shutdown", "/r /f /t 0");
+                        }
+                        else
+                        {
+                            NotepadLog($"RestartDateTime matched But IsActive is False {DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}");
+
+                        }
+
+                    }
+                }
+                
 
 
                 EnableZIPUpload = Convert.ToBoolean(ConfigurationManager.AppSettings["EnableZIPUpload"]);
@@ -163,8 +209,6 @@ namespace SystemService
                 else
                 {
                     Console.WriteLine("EnableZIPUpload is False");
-                    NotepadLog($"EnableZIPUpload is False {DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss")}");
-
                 }
 
 
@@ -602,6 +646,44 @@ namespace SystemService
                 return DateTime.MinValue;
             }
         }
+        private (DateTime RestartDateTime, string IsActive) GetRestartDateTimeAndIsActiveFromDB(string SystemName)
+        {
+            DateTime restartDateTime = DateTime.MinValue;
+            string isActive = "";
+
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    using (SqlCommand command = new SqlCommand("GT_SystemRestartSP", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@ntype", 0);
+                        command.Parameters.AddWithValue("@nstype", 0);
+                        command.Parameters.AddWithValue("@SystemName", SystemName);
+
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (reader.HasRows)
+                            {
+                                reader.Read();
+                                restartDateTime = reader.GetDateTime(reader.GetOrdinal("RestartDateTime"));
+                                isActive = reader.GetString(reader.GetOrdinal("IsActive"));
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"(GetRestartDateTimeAndIsActiveFromDB) Error executing system restart stored procedure: {ex.Message}");
+                NotepadLog($"(GetRestartDateTimeAndIsActiveFromDB) {ex.Message} {DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss")}");
+            }
+
+            return (restartDateTime, isActive);
+        }
+
 
         private void NotepadLog(string LogText)
         {
